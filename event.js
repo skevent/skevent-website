@@ -1,143 +1,176 @@
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('Event JS Loaded'); // DEBUG
-    const eventContainer = document.getElementById('event-full-details');
-    console.log('Container found:', eventContainer); // DEBUG
+import { supabase } from './supabaseClient.js';
 
-    // Only run on the event details page
+document.addEventListener('DOMContentLoaded', async () => {
+    const eventContainer = document.getElementById('event-full-details');
     if (!eventContainer) return;
 
-    // Get Event ID from URL (Clean Path: /events/type-date)
-    const getEventIdFromUrl = () => {
-        const path = window.location.pathname;
-        const match = path.match(/\/events\/([a-zA-Z0-9-]+)/);
-        return match ? match[1] : null;
-    };
-
-    const eventId = getEventIdFromUrl();
-    console.log('URL ID:', eventId); // DEBUG
+    // Get Event ID from URL
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get('id');
 
     if (!eventId) {
-        console.error('No ID found in URL');
         renderError('No event specified.');
         return;
     }
 
-    const SHEET_API = 'https://opensheet.elk.sh/1_7lOYKJZ_cmJeMn3hZNggNmk58Wu2SdYjVtlQgG-7lQ/upcoming_events';
+    try {
+        const { data: event, error } = await supabase
+            .from('events')
+            .select('*')
+            .eq('id', eventId)
+            .single();
 
-    // Helper: Drive Link Converter
-    const driveLinkToDirect = (link) => {
-        if (!link) return '';
-        const idMatch = link.match(/\/d\/([a-zA-Z0-9_-]+)/);
-        if (idMatch && idMatch[1]) {
-            return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w1920`;
+        if (error || !event) {
+            console.error('Event fetch error:', error);
+            renderError('Event not found or unavailable.');
+            return;
         }
-        return link;
-    };
 
-    fetch(SHEET_API)
-        .then(response => response.json())
-        .then(data => {
-            console.log('Data fetched:', data.length, 'rows'); // DEBUG
-
-            // Find the event
-            const event = data.find(item => {
-                // Normalize keys for ID check
-                const type = item['Type'] || item['type'] || 'event';
-                const date = item['Date'] || item['date'];
-
-                // Prompt: "Each event must have an id field... format <type>-<yyyy-mm-dd>"
-                // We check the 'id' column first.
-                const rawId = item['id'] || item['Id'] || item['ID'];
-
-                // Fallback ID generation to MATCH main.js exactly
-                let generatedId = rawId;
-                if (!generatedId && type && date) {
-                    generatedId = `${type.toLowerCase().trim()}-${date}`;
-                }
-
-                console.log(`Checking ID: ${generatedId} vs URL: ${eventId}`); // Debug log
-                return generatedId === eventId;
-            });
-
-            if (event) {
-                renderEvent(event);
-            } else {
-                renderError('Event not found.');
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            renderError('Unable to load event details.');
-        });
+        renderEvent(event);
+    } catch (err) {
+        console.error('Error fetching event:', err);
+        renderError('Event not found or unavailable.');
+    }
 
     function renderEvent(item) {
-        // Normalizing data keys
-        const title = item['Title '] || item['Title'] || item['title'] || 'Untitled Event';
-        const date = item['Date'] || item['date'];
-        const time = item['Time'] || item['time'] || '';
-        const location = item['Location'] || item['location'] || '';
-        const address = item['Address'] || item['address'] || '';
-        const type = item['Type'] || item['type'] || 'Event';
-        const description = item['Description'] || item['description'] || '';
-        const imageRaw = item['Image'] || item['image'];
-        const imageUrl = driveLinkToDirect(imageRaw) || 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80';
-        const insta = item['Insta'] || item['insta'];
-        const tickets = item['Tickets'] || item['tickets'] || 'TBA';
-        const formLink = item['Form'] || item['form'] || item['Link'] || 'index.html#contact'; // Fallback to contact section
+        const dateObj = new Date(item.date);
+        const dateStr = isNaN(dateObj)
+            ? item.date
+            : dateObj.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
 
-        // Date formatting
-        const dateObj = new Date(date);
-        const dateStr = isNaN(dateObj) ? date : dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const imageUrl =
+            item.image_url ||
+            'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80';
+
+        const priceDisplay = item.price > 0 ? `₹${item.price}` : 'Free';
+        const slotsDisplay = item.capacity ? `${item.capacity} Spots` : 'Open Entry';
 
         eventContainer.innerHTML = `
-                <div class="event-detail-header">
-                    <img src="${imageUrl}" alt="${title}" class="event-detail-image">
-                    <div class="event-detail-badge">${type}</div>
+            <div class="event-detail-header">
+                <img src="${imageUrl}" alt="${item.title}" class="event-detail-image">
+                <div class="event-detail-badge">Event</div>
+            </div>
+
+            <div class="event-detail-content">
+                <h1 class="event-detail-title">${item.title}</h1>
+
+                <div class="event-meta-grid">
+                    <div class="meta-item">
+                        <span class="meta-label">Date</span>
+                        <span class="meta-value">${dateStr}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Location</span>
+                        <span class="meta-value">${item.location || 'TBA'}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Price</span>
+                        <span class="meta-value">${priceDisplay}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Capacity</span>
+                        <span class="meta-value">${slotsDisplay}</span>
+                    </div>
                 </div>
 
-                <div class="event-detail-content">
-                    <h1 class="event-detail-title">${title}</h1>
-                    
-                    <div class="event-meta-grid">
-                        <div class="meta-item">
-                            <span class="meta-label">Date</span>
-                            <span class="meta-value">${dateStr}</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Time</span>
-                            <span class="meta-value">${time}</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Location</span>
-                            <span class="meta-value">${location}</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Tickets</span>
-                            <span class="meta-value">${tickets}</span>
-                        </div>
-                    </div>
+                ${item.external_link
+                ? `<p class="event-address">
+                               <a href="${item.external_link}" target="_blank">External Link ↗</a>
+                           </p>`
+                : ''
+            }
 
-                    ${address ? `<p class="event-address"><strong>Address:</strong> ${address}</p>` : ''}
-                    
-                    <div class="event-description">
-                        <h3>About this Event</h3>
-                        <p>${description || 'No description available for this event.'}</p>
-                    </div>
+                <div class="event-description">
+                    <h3>About this Event</h3>
+                    <p>${item.description || 'No description available.'}</p>
+                </div>
 
-                    <div class="event-actions">
-                        <a href="/book/${eventId}" class="btn btn-primary">Book Tickets</a>
-                        ${insta ? `<a href="${insta}" target="_blank" class="btn btn-outline" style="margin-left: 10px;">View on Instagram ↗</a>` : ''}
-                    </div>
+                <div class="event-actions">
+                    <a id="book-btn" href="/book.html?id=${item.id}" class="btn btn-primary">
+                        Book Tickets
+                    </a>
                 </div>
             </div>
         `;
+
+        // Promo Code Logic (only if elements exist)
+        const promoInput = document.getElementById('promo-code');
+        const applyBtn = document.getElementById('apply-code-btn');
+        const promoMsg = document.getElementById('promo-message');
+        const discountRow = document.getElementById('discount-row');
+        const discountPercentEl = document.getElementById('discount-percent');
+        const discountAmountEl = document.getElementById('discount-amount');
+        const finalTotalEl = document.getElementById('final-total');
+        const bookBtn = document.getElementById('book-btn');
+
+        if (!applyBtn || !promoInput) return;
+
+        let currentPrice = item.price;
+        let appliedCode = '';
+
+        applyBtn.addEventListener('click', async () => {
+            const code = promoInput.value.trim();
+            if (!code) return;
+
+            applyBtn.textContent = 'Checking...';
+            applyBtn.disabled = true;
+            promoMsg.textContent = '';
+            promoMsg.className = 'promo-message';
+
+            try {
+                const res = await fetch('/api/validate-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+
+                const data = await res.json();
+
+                if (res.ok && data.valid) {
+                    const discount = (item.price * data.discountPercent) / 100;
+                    const newTotal = Math.max(0, item.price - discount);
+
+                    discountRow.style.display = 'flex';
+                    discountPercentEl.textContent = data.discountPercent;
+                    discountAmountEl.textContent = Math.round(discount);
+                    finalTotalEl.textContent = Math.round(newTotal);
+
+                    promoMsg.textContent = `Code '${code}' applied! You saved ${data.discountPercent}%`;
+                    promoMsg.classList.add('success');
+
+                    bookBtn.href = `/book.html?id=${item.id}&code=${code}`;
+
+                    appliedCode = code;
+                    currentPrice = newTotal;
+                } else {
+                    throw new Error(data.error || 'Invalid code');
+                }
+            } catch (err) {
+                promoMsg.textContent = err.message;
+                promoMsg.classList.add('error');
+
+                discountRow.style.display = 'none';
+                finalTotalEl.textContent = item.price;
+                bookBtn.href = `/book.html?id=${item.id}`;
+            } finally {
+                applyBtn.textContent = 'Apply';
+                applyBtn.disabled = false;
+            }
+        });
     }
 
     function renderError(msg) {
         eventContainer.innerHTML = `
             <div class="error-state">
                 <h3>${msg}</h3>
-                <a href="index.html#events" class="btn btn-outline" style="margin-top: 1rem;">Back to Events</a>
+                <a href="/" class="btn btn-outline" style="margin-top: 1rem;">
+                    Back to Events
+                </a>
             </div>
         `;
     }

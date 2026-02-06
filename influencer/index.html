@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Influencer Dashboard | SK Events</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="dashboard.css">
+    <link rel="icon" type="image/jpeg" href="/logo.jpeg">
+</head>
+
+<body>
+
+    <!-- Header -->
+    <header class="header scrolled">
+        <div class="container header-container">
+            <nav class="nav">
+                <ul class="nav-list">
+                    <li><a href="/#about" class="nav-link">About</a></li>
+                    <li><a href="/#services" class="nav-link">Services</a></li>
+                    <li><a href="/#work" class="nav-link">Work</a></li>
+                </ul>
+            </nav>
+
+            <a href="/" class="logo">
+                <span class="logo-text">SK Events</span>
+            </a>
+
+            <div class="header-cta" id="auth-buttons">
+                <button class="menu-toggle">
+                    <span></span><span></span><span></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="dash-container">
+
+        <!-- Loading -->
+        <div id="loading">Loading Dashboard...</div>
+
+        <!-- Pending State -->
+        <div id="pending-state"
+            style="display: none; text-align: center; background: #fff; padding: 3rem; border-radius: 12px;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">⏳</div>
+            <h2>Application Pending</h2>
+            <p>Your influencer application is currently under review by our team.</p>
+            <p>You will receive an email once your account is approved.</p>
+        </div>
+
+        <!-- Active State -->
+        <div id="active-state" style="display: none;">
+            <div class="dash-header">
+                <h1>Influencer Dashboard</h1>
+                <span class="status-badge status-active">Active Partner</span>
+            </div>
+
+            <!-- Profile Management -->
+            <div class="profile-section">
+                <div class="profile-img-upload">
+                    <img id="img-preview"
+                        src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2NjYyI+PHBhdGggZD0iTTEyIDEyYzIuMjEgMCA0LTEuNzkgNC00cy0xLjc5LTQtNC00LTQgMS43OS00IDQgMS43OSA0IDQgNHptMCAyYy0yLjY3IDAtOCAxLjM0LTggNHYyaDE2di0yYzAtMi42Ni01LjMzLTQtOC00eiIvPjwvc3ZnPg=="
+                        class="profile-img-preview" alt="Profile">
+                    <input type="file" id="file-upload" accept="image/*" style="display: none;">
+                    <button class="btn btn-outline btn-sm"
+                        onclick="document.getElementById('file-upload').click()">Upload Photo</button>
+                    <p id="upload-status" style="font-size: 0.8rem; margin-top: 5px; color: grey;"></p>
+                </div>
+
+                <form id="profile-form">
+                    <h3>Your Details</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="inf-name">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="inf-email" disabled style="background: #f9f9f9;">
+                        </div>
+                        <div class="form-group full-width">
+                            <label>Referral Code</label>
+                            <input type="text" id="inf-code" disabled
+                                style="background: #f0efff; font-weight: bold; letter-spacing: 1px;">
+                            <small class="text-muted">Share this code to offer discounts!</small>
+                        </div>
+
+                        <div class="full-width">
+                            <hr>
+                        </div>
+                        <h4 class="full-width">Social Links</h4>
+
+                        <div class="form-group">
+                            <label>Instagram URL</label>
+                            <input type="url" id="inf-insta" placeholder="https://instagram.com/...">
+                        </div>
+                        <div class="form-group">
+                            <label>Facebook URL</label>
+                            <input type="url" id="inf-fb">
+                        </div>
+                        <div class="form-group full-width">
+                            <label>YouTube URL</label>
+                            <input type="url" id="inf-yt">
+                        </div>
+
+                        <div class="full-width">
+                            <button type="submit" class="btn btn-primary">Save Profile</button>
+                            <span id="save-msg" style="margin-left: 10px; color: green; display: none;">Saved!</span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-referrals">0</div>
+                    <p>Total Bookings</p>
+                </div>
+            </div>
+
+            <!-- Referral Table -->
+            <div style="margin-top: 3rem;">
+                <h3>Referral History</h3>
+                <div class="table-container">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Customer Name</th>
+                                <th>Event Name</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="referrals-table-body">
+                            <tr>
+                                <td colspan="3" style="text-align: center; color: #888;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { supabase } from '/supabaseClient.js';
+
+        const loadingFn = (show) => document.getElementById('loading').style.display = show ? 'block' : 'none';
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                window.location.href = '/login.html';
+                return;
+            }
+
+            const userId = session.user.id;
+
+            // 1. Fetch Profile Role
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('role, full_name')
+                .eq('id', userId)
+                .single();
+
+            if (!profile || !['influencer', 'pending_influencer'].includes(profile.role)) {
+                alert('Access Denied. Not an influencer account.');
+                window.location.href = '/';
+                return;
+            }
+
+            // 2. Fetch Influencer Record
+            const { data: influencer, error } = await supabase
+                .from('influencers')
+                .select('*')
+                .eq('id', userId)
+                .single();
+
+            loadingFn(false);
+
+            // 3. Handle Auto-Activation Logic
+            if (!influencer && profile.role === 'influencer') {
+                console.log('🚀 Auto-activating Influencer...');
+                const code = profile.full_name.toUpperCase().replace(/\s+/g, '').substring(0, 4) + Math.floor(100 + Math.random() * 900);
+
+                const { data: newInf, error: insertError } = await supabase
+                    .from('influencers')
+                    .insert([{
+                        id: userId,
+                        email: session.user.email,
+                        code: code,
+                        active: true
+                    }])
+                    .select()
+                    .single();
+
+                if (insertError) {
+                    console.error('Auto-activation failed:', insertError);
+                    alert('Error creating influencer record.');
+                    return;
+                }
+
+                document.getElementById('active-state').style.display = 'block';
+                populateForm(newInf, profile);
+                return;
+            }
+
+            // 4. Handle Pending State
+            if (profile.role === 'pending_influencer' || (influencer && !influencer.active)) {
+                document.getElementById('pending-state').style.display = 'block';
+                return;
+            }
+
+            // 5. Active State
+            if (influencer && influencer.active) {
+                document.getElementById('active-state').style.display = 'block';
+                populateForm(influencer, profile);
+                loadReferrals(influencer.code);
+            }
+        }
+
+        async function loadReferrals(code) {
+            // Fetch bookings with event details
+            const { data: bookings, error } = await supabase
+                .from('bookings')
+                .select('customer_name, created_at, events (title)')
+                .eq('influencer_code', code)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching referrals:', error);
+                return;
+            }
+
+            // Update Count
+            document.getElementById('stat-referrals').textContent = bookings.length;
+
+            // Render Table
+            const tbody = document.getElementById('referrals-table-body');
+            if (bookings.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="padding: 1rem; text-align: center; color: #888;">No referrals yet. Share your code!</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = bookings.map(b => `
+                <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
+                    <td>${b.customer_name || 'Anonymous'}</td>
+                    <td>${b.events?.title || 'Unknown Event'}</td>
+                    <td>${new Date(b.created_at).toLocaleDateString()}</td>
+                </tr>
+            `).join('');
+        }
+
+        function populateForm(data, profile) {
+            document.getElementById('inf-name').value = profile?.full_name || '';
+            document.getElementById('inf-email').value = data.email || '';
+            document.getElementById('inf-code').value = data.code || 'PENDING';
+            document.getElementById('inf-insta').value = data.instagram || '';
+            document.getElementById('inf-fb').value = data.facebook || '';
+            document.getElementById('inf-yt').value = data.youtube || '';
+            if (data.image_url) document.getElementById('img-preview').src = data.image_url;
+        }
+
+        // Image Upload
+        const fileInput = document.getElementById('file-upload');
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const status = document.getElementById('upload-status');
+            status.textContent = 'Uploading...';
+
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                const userName = session.user.email.split('@')[0];
+                const fileName = `influencer-${session.user.id}-${Date.now()}`;
+
+                const { data, error } = await supabase.storage
+                    .from('influencer-images')
+                    .upload(fileName, file);
+
+                if (error) throw error;
+
+                // Get Public URL
+                const { data: { publicUrl } } = supabase.storage
+                    .from('influencer-images')
+                    .getPublicUrl(fileName);
+
+                // Update UI & DB
+                document.getElementById('img-preview').src = publicUrl;
+
+                await supabase.from('influencers')
+                    .update({ image_url: publicUrl })
+                    .eq('id', session.user.id);
+
+                status.textContent = 'Upload Complete';
+
+            } catch (err) {
+                console.error(err);
+                status.textContent = 'Upload Failed';
+            }
+        });
+
+        // Save Profile
+        document.getElementById('profile-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const { data: { session } } = await supabase.auth.getSession();
+
+            const updates = {
+                instagram: document.getElementById('inf-insta').value,
+                facebook: document.getElementById('inf-fb').value,
+                youtube: document.getElementById('inf-yt').value
+            };
+
+            const profileUpdates = {
+                full_name: document.getElementById('inf-name').value
+            };
+
+            // Update Influencer socials
+            await supabase.from('influencers')
+                .update(updates)
+                .eq('id', session.user.id);
+
+            // Update Profile name
+            await supabase.from('profiles')
+                .update(profileUpdates)
+                .eq('id', session.user.id);
+
+            const msg = document.getElementById('save-msg');
+            msg.style.display = 'inline';
+            setTimeout(() => msg.style.display = 'none', 3000);
+        });
+
+        init();
+    </script>
+    <script type="module" src="/main.js"></script>
+</body>
+
+</html>

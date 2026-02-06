@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upcoming Events | SK Events</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/jpeg" href="/logo.jpeg">
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+
+    <!-- Header (Consistent with Main Site) -->
+    <header class="header scrolled">
+        <div class="container header-container">
+            <nav class="nav">
+                <ul class="nav-list">
+                    <li><a href="/#about" class="nav-link">About</a></li>
+                    <li><a href="/#services" class="nav-link">Services</a></li>
+                    <li><a href="/#work" class="nav-link">Work</a></li>
+                    <li><a href="/events.html" class="nav-link active">Events</a></li>
+                </ul>
+            </nav>
+
+            <a href="/" class="logo">
+                <span class="logo-text">SK Events</span>
+            </a>
+
+            <div class="header-cta" id="auth-buttons">
+                <!-- Auth/Profile Logic will be injected here if needed, or keeping it simple for now -->
+                <a href="/login.html" class="btn btn-outline" style="padding: 8px 20px; font-size: 0.9rem;">Sign In</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Page Title / Hero -->
+    <section class="section" style="padding-top: 140px; padding-bottom: 2rem; background: var(--color-bg);">
+        <div class="container" style="text-align: center;">
+            <p class="tagline">Discover & Book</p>
+            <h1 class="headline" style="font-size: 3.5rem; margin-bottom: 1rem;">Upcoming Events</h1>
+            <div class="underline"></div>
+            <p class="about-text" style="font-size: 1.1rem; max-width: 600px;">
+                Explore our curated list of exclusive events, from cultural festivals to luxury gatherings. Book your
+                spot today.
+            </p>
+        </div>
+    </section>
+
+    <!-- Filters & Search -->
+    <section class="section" style="padding: 0 0 4rem 0; border: none;">
+        <div class="container">
+            <div class="events-filter-bar">
+                <div class="search-wrapper">
+                    <input type="text" id="search-input" placeholder="Search events...">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="search-icon">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                </div>
+
+                <div class="filter-group">
+                    <select id="sort-select">
+                        <option value="date_asc">Date: Upcoming First</option>
+                        <option value="date_desc">Date: Newest First</option>
+                        <option value="price_asc">Price: Low to High</option>
+                        <option value="price_desc">Price: High to Low</option>
+                    </select>
+
+                    <select id="type-select">
+                        <option value="all">All Prices</option>
+                        <option value="free">Free</option>
+                        <option value="paid">Paid</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Events Grid -->
+    <section class="section" style="padding-top: 0; border: none;">
+        <div class="container">
+            <div id="events-grid" class="events-showcase-grid">
+                <!-- Cards will be injected here -->
+                <div class="loading-spinner"></div>
+            </div>
+
+            <div id="load-more-container" style="text-align: center; margin-top: 4rem; display: none;">
+                <button id="load-more-btn" class="btn btn-outline">Load More Events</button>
+            </div>
+
+            <div id="no-results" style="text-align: center; display: none; padding: 4rem;">
+                <h3>No events found matching your criteria.</h3>
+                <p>Try adjusting your filters or search terms.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer
+        style="text-align: center; padding: 4rem 0; color: var(--color-text-muted); border-top: 1px solid var(--color-border);">
+        <p>&copy; 2026 SK Events. All rights reserved.</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script type="module">
+        import { supabase } from '/supabaseClient.js';
+
+        // --- Auth State Logic (Copied from main.js) ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            // --- Mobile Menu ---
+            const menuToggle = document.querySelector('.menu-toggle');
+            const nav = document.querySelector('.nav');
+            if (menuToggle) {
+                menuToggle.addEventListener('click', () => {
+                    nav.classList.toggle('active');
+                    menuToggle.classList.toggle('is-active');
+                });
+
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.addEventListener('click', () => {
+                        nav.classList.remove('active');
+                        menuToggle.classList.remove('is-active');
+                    });
+                });
+            }
+
+            // Sync Header Auth State
+            const updateAuthUI = async () => {
+                const { data: { session } } = await supabase.auth.getSession();
+                const authButtons = document.getElementById('auth-buttons'); // Desktop container
+                const mobileLoginLink = document.querySelector('.mobile-only a'); // Mobile link
+
+                // Just in case existing page structure is slightly different
+                const headerCta = document.querySelector('.header-cta');
+                const targetContainer = authButtons || headerCta;
+
+                if (session) {
+                    // 1. Hide default Sign In buttons
+                    if (targetContainer) {
+                        const authLinks = targetContainer.querySelectorAll('.nav-link, .btn, .btn-primary, .btn-outline');
+                        authLinks.forEach(link => {
+                            if (!link.classList.contains('profile-trigger') && !link.classList.contains('menu-item')) {
+                                link.style.display = 'none';
+                            }
+                        });
+                    }
+                    if (mobileLoginLink) mobileLoginLink.parentElement.style.display = 'none';
+
+                    // 2. Fetch Profile
+                    const { data: profile, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('role, full_name')
+                        .eq('id', session.user.id)
+                        .single();
+
+                    if (profileError) {
+                        console.warn('⚠️ Profile Fetch Error:', profileError.message);
+                    }
+
+                    // 3. Render Profile Dropdown (Synced with main.js)
+                    if (!document.getElementById('profile-menu-container')) {
+                        const container = document.createElement('div');
+                        container.id = 'profile-menu-container';
+                        container.className = 'profile-dropdown-container';
+
+                        const displayName = profile?.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
+                        const firstName = displayName.split(' ')[0];
+                        const initials = (firstName || 'U').charAt(0).toUpperCase();
+                        const avatarUrl = profile?.avatar_url;
+
+                        const userRole = profile?.role || 'user';
+                        const canAccessDashboard = ['admin', 'influencer', 'pending_influencer'].includes(userRole);
+                        const dashboardUrl = userRole === 'admin' ? '/admin/index.html' : '/influencer/index.html';
+
+                        container.innerHTML = `
+                            <button class="profile-trigger" id="profile-trigger" aria-expanded="false">
+                                <div class="profile-avatar">
+                                    ${avatarUrl ? `<img src="${avatarUrl}" alt="Avatar">` : initials}
+                                </div>
+                                <span class="profile-name">
+                                    ${firstName} 
+                                    <span class="dropdown-arrow">▼</span>
+                                </span>
+                            </button>
+                            
+                            <div class="profile-dropdown-menu" id="dropdown-menu">
+                                <div class="profile-menu-header">
+                                    <div class="profile-avatar">
+                                        ${avatarUrl ? `<img src="${avatarUrl}" alt="Avatar">` : initials}
+                                    </div>
+                                    <div class="profile-info">
+                                        <span class="name">${displayName}</span>
+                                        <span class="role">${userRole || 'User'}</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="menu-divider"></div>
+                                
+                                ${canAccessDashboard ?
+                                `<a href="${dashboardUrl}" class="menu-item link-dashboard">Dashboard</a>`
+                                : ''}
+                                    
+                                <button id="logout-btn" class="menu-item sign-out">Sign Out</button>
+                            </div>
+                        `;
+
+                        if (targetContainer) targetContainer.appendChild(container);
+
+                        // Dropdown Logic
+                        const trigger = document.getElementById('profile-trigger');
+                        const menu = document.getElementById('dropdown-menu');
+                        const logoutBtn = document.getElementById('logout-btn');
+
+                        if (trigger) {
+                            trigger.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                const isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+                                trigger.setAttribute('aria-expanded', !isExpanded);
+                                menu.classList.toggle('active');
+                            });
+                        }
+
+                        document.addEventListener('click', (e) => {
+                            if (container && !container.contains(e.target)) {
+                                if (menu && menu.classList.contains('active')) {
+                                    menu.classList.remove('active');
+                                    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+                                }
+                            }
+                        });
+
+
+                        logoutBtn.addEventListener('click', async () => {
+                            await supabase.auth.signOut();
+                            window.location.reload();
+                        });
+                    }
+                } else {
+                    // Logged Out
+                    if (targetContainer) {
+                        const links = targetContainer.querySelectorAll('a, button');
+                        links.forEach(link => {
+                            if (!link.closest('#profile-menu-container')) {
+                                link.style.display = '';
+                            }
+                        });
+                    }
+                    if (mobileLoginLink) mobileLoginLink.parentElement.style.display = 'block';
+
+                    const profileMenu = document.getElementById('profile-menu-container');
+                    if (profileMenu) profileMenu.remove();
+                }
+            };
+
+            updateAuthUI();
+        });
+
+        const state = {
+            page: 0,
+            limit: 9, // 3 rows of 3
+            hasMore: true,
+            isLoading: false,
+            filters: {
+                search: '',
+                sort: 'date_asc',
+                type: 'all'
+            }
+        };
+
+        const dom = {
+            grid: document.getElementById('events-grid'),
+            loadMoreBtn: document.getElementById('load-more-btn'),
+            loadMoreContainer: document.getElementById('load-more-container'),
+            searchInput: document.getElementById('search-input'),
+            sortSelect: document.getElementById('sort-select'),
+            typeSelect: document.getElementById('type-select'),
+            noResults: document.getElementById('no-results')
+        };
+
+        async function fetchEvents(reset = false) {
+            if (state.isLoading) return;
+            state.isLoading = true;
+
+            if (reset) {
+                state.page = 0;
+                state.hasMore = true;
+                dom.grid.innerHTML = '<div class="loading-spinner"></div>';
+                dom.noResults.style.display = 'none';
+                dom.loadMoreContainer.style.display = 'none';
+            } else {
+                dom.loadMoreBtn.textContent = 'Loading...';
+            }
+
+            try {
+                let query = supabase
+                    .from('events')
+                    .select('*', { count: 'exact' });
+
+                // 1. Search
+                if (state.filters.search) {
+                    query = query.ilike('title', `%${state.filters.search}%`);
+                }
+
+                // 2. Type Filter
+                if (state.filters.type === 'free') {
+                    query = query.eq('price', 0);
+                } else if (state.filters.type === 'paid') {
+                    query = query.gt('price', 0);
+                }
+
+                // 3. Sorting
+                if (state.filters.sort === 'date_asc') {
+                    query = query.order('date', { ascending: true });
+                } else if (state.filters.sort === 'date_desc') {
+                    query = query.order('date', { ascending: false }); // Technically "past" logic might vary
+                } else if (state.filters.sort === 'price_asc') {
+                    query = query.order('price', { ascending: true });
+                } else if (state.filters.sort === 'price_desc') {
+                    query = query.order('price', { ascending: false });
+                }
+
+                // 4. Pagination
+                const from = state.page * state.limit;
+                const to = from + state.limit - 1;
+                query = query.range(from, to);
+
+                const { data, error, count } = await query;
+
+                if (error) throw error;
+
+                if (reset) dom.grid.innerHTML = '';
+
+                if (data.length === 0 && reset) {
+                    dom.noResults.style.display = 'block';
+                } else {
+                    renderEvents(data);
+                }
+
+                // Update State
+                state.page++;
+                state.hasMore = (from + data.length) < count;
+                updateUI();
+
+            } catch (err) {
+                console.error(err);
+                dom.grid.innerHTML = `<p style="text-align:center; color:red; width:100%;">Error loading events. Please try again.</p>`;
+            } finally {
+                state.isLoading = false;
+            }
+        }
+
+        function renderEvents(events) {
+            const html = events.map(event => `
+                <article class="event-card-public">
+                    <div class="event-card-image">
+                        <img src="${event.image_url || 'https://via.placeholder.com/800x600?text=No+Image'}" alt="${event.title}" loading="lazy">
+                        ${event.price === 0 ? '<span class="price-badge free">Free</span>' : `<span class="price-badge">₹${event.price}</span>`}
+                    </div>
+                    <div class="event-card-content">
+                        <div class="event-meta">
+                            <span>📅 ${new Date(event.date).toLocaleDateString()}</span>
+                            <span>📍 ${event.location}</span>
+                        </div>
+                        <h3 class="event-title">${event.title}</h3>
+                        <p class="event-description">${event.description ? event.description.substring(0, 100) + '...' : 'Join us for this exclusive event.'}</p>
+                        <a href="/event.html?id=${event.id}" class="btn btn-primary btn-block">View Details</a>
+                    </div>
+                </article>
+            `).join('');
+
+            dom.grid.insertAdjacentHTML('beforeend', html);
+        }
+
+        function updateUI() {
+            dom.loadMoreContainer.style.display = state.hasMore ? 'block' : 'none';
+            dom.loadMoreBtn.textContent = 'Load More Events';
+        }
+
+        // Listeners
+        dom.searchInput.addEventListener('input', debounce((e) => {
+            state.filters.search = e.target.value;
+            fetchEvents(true);
+        }, 500));
+
+        dom.sortSelect.addEventListener('change', (e) => {
+            state.filters.sort = e.target.value;
+            fetchEvents(true);
+        });
+
+        dom.typeSelect.addEventListener('change', (e) => {
+            state.filters.type = e.target.value;
+            fetchEvents(true);
+        });
+
+        dom.loadMoreBtn.addEventListener('click', () => fetchEvents(false));
+
+        // Utility
+        function debounce(func, wait) {
+            let timeout;
+            return function (...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+
+        // Initial Load
+        fetchEvents(true);
+
+    </script>
+</body>
+
+</html>

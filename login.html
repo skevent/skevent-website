@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | SK Events</title>
+    <link rel="stylesheet" href="/style.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@700&display=swap"
+        rel="stylesheet">
+    <link rel="icon" type="image/jpeg" href="/logo.jpeg">
+    <style>
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: var(--color-bg);
+        }
+
+        .auth-card {
+            background: #fff;
+            padding: 3rem;
+            border-radius: 12px;
+            box-shadow: var(--shadow-soft);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .auth-card h1 {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .form-group {
+            text-align: left;
+            margin-bottom: 1.5rem;
+        }
+
+        .toggle-auth {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: var(--color-text-muted);
+        }
+
+        .toggle-auth a {
+            color: var(--color-accent);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .error-msg {
+            color: red;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="auth-container">
+        <div class="auth-card">
+            <h1 id="auth-title">Welcome Back</h1>
+            <p class="error-msg" id="error-msg">Error message here</p>
+
+            <!-- Step 1: Email Form -->
+            <!-- Step 1: Email Form -->
+            <form id="email-form">
+                <!-- Signup Name Field (Top) -->
+                <div id="signup-name-field" style="display: none;">
+                    <div class="form-group">
+                        <label for="name">Full Name</label>
+                        <input type="text" id="name" placeholder="John Doe">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required placeholder="name@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                    <div style="text-align: right; margin-top: 5px;">
+                        <a id="forgot-link"
+                            style="font-size: 0.85rem; color: var(--color-text-muted); cursor: pointer;">Forgot
+                            Password?</a>
+                    </div>
+                </div>
+
+                <!-- Signup Influencer Field (Bottom) -->
+                <div id="signup-influencer-field" style="display: none;">
+                    <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="influencer-check" style="width: auto; margin:0;">
+                        <label for="influencer-check" style="margin:0; font-weight: normal;">Apply as Influencer</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary btn-block" id="email-submit-btn">Continue</button>
+                </div>
+            </form>
+
+            <!-- Forgot Password Form -->
+            <form id="forgot-form" style="display: none;">
+                <p class="text-muted" style="margin-bottom: 1rem;">Enter your email to receive a reset link.</p>
+                <div class="form-group">
+                    <label for="forgot-email">Email</label>
+                    <input type="email" id="forgot-email" required placeholder="name@example.com">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary btn-block" id="forgot-submit-btn">Send Reset
+                        Link</button>
+                    <button type="button" class="btn btn-outline btn-block" id="back-from-forgot"
+                        style="margin-top: 10px;">Back</button>
+                </div>
+            </form>
+
+            <!-- Step 2: OTP Form -->
+            <form id="otp-form" style="display: none; color: #334155;">
+                <p class="text-muted" style="margin-bottom: 1rem;">Enter the code sent to your email.</p>
+                <div class="form-group">
+                    <label for="otp">Verification Code</label>
+                    <input type="text" id="otp" required placeholder="123456" maxlength="6"
+                        style="letter-spacing: 5px; text-align: center; font-size: 1.2rem; display: block; width: 100%;">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary btn-block" id="otp-submit-btn">Verify & Login</button>
+                    <button type="button" class="btn btn-outline btn-block" id="back-to-email"
+                        style="margin-top: 10px;">Back</button>
+                </div>
+            </form>
+
+
+            <!-- Back Button (OTP) inside the form -->
+
+            <p class="toggle-auth">
+                <span id="toggle-text">Don't have an account?</span>
+                <a id="toggle-link">Sign Up</a>
+            </p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { supabase } from './supabaseClient.js';
+
+        // UI References
+        const authTitle = document.getElementById('auth-title');
+        const errorMsg = document.getElementById('error-msg');
+        const toggleLink = document.getElementById('toggle-link');
+        const toggleText = document.getElementById('toggle-text');
+
+        // Forms
+        const emailForm = document.getElementById('email-form');
+        const otpForm = document.getElementById('otp-form');
+        const signupNameField = document.getElementById('signup-name-field');
+        const signupInfluencerField = document.getElementById('signup-influencer-field');
+        const backToEmailBtn = document.getElementById('back-to-email');
+
+        // Inputs
+        const emailInput = document.getElementById('email');
+        const nameInput = document.getElementById('name');
+        const influencerCheck = document.getElementById('influencer-check');
+        const otpInput = document.getElementById('otp');
+
+        // Buttons
+        const emailSubmitBtn = document.getElementById('email-submit-btn');
+        const otpSubmitBtn = document.getElementById('otp-submit-btn');
+
+        // State
+        let isLogin = true;
+        let currentEmail = '';
+
+        // Check URL for mode
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('mode') === 'signup') {
+            toggleMode(false);
+        }
+
+        function toggleMode(loginState) {
+            isLogin = loginState;
+            authTitle.textContent = isLogin ? 'Welcome Back' : 'Create Account';
+            toggleText.textContent = isLogin ? "Don't have an account?" : "Already have an account?";
+            toggleLink.textContent = isLogin ? 'Sign Up' : 'Login';
+            emailSubmitBtn.textContent = isLogin ? 'Login' : 'Continue';
+
+            signupNameField.style.display = isLogin ? 'none' : 'block';
+            signupInfluencerField.style.display = isLogin ? 'none' : 'block';
+            errorMsg.style.display = 'none';
+        }
+
+        // Initialize button text on load
+        emailSubmitBtn.textContent = isLogin ? 'Login' : 'Continue';
+
+        toggleLink.addEventListener('click', () => toggleMode(!isLogin));
+
+        // Step 1: Login or Send OTP (Signup)
+        emailForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = emailInput.value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            if (!email || !password) {
+                errorMsg.textContent = 'Please fill in all fields.';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            currentEmail = email;
+            errorMsg.style.display = 'none';
+            emailSubmitBtn.disabled = true;
+            emailSubmitBtn.textContent = isLogin ? 'Logging in...' : 'Sending Code...';
+
+            try {
+                if (isLogin) {
+                    // --- LOGIN FLOW (Password) ---
+                    const { data, error } = await supabase.auth.signInWithPassword({
+                        email: email,
+                        password: password
+                    });
+
+                    if (error) throw error;
+
+                    // Success
+                    window.location.href = '/';
+                } else {
+                    // --- SIGNUP FLOW (OTP Verification) ---
+                    // Check if user already exists? (Optional, Supabase might handle it)
+                    // Send OTP
+                    const response = await fetch('/api/auth/send-otp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.error || 'Failed to send OTP');
+
+                    console.log('OTP sent successfully. Switching to OTP verification view.'); // Added console.log
+
+                    // Switch to OTP View - Explicit Visibility Handling
+                    emailForm.style.display = 'none';
+                    forgotForm.style.display = 'none'; // Ensure forgot form is hidden
+
+                    otpForm.style.display = 'block';
+                    otpForm.style.visibility = 'visible'; // Force visibility
+
+                    const toggleAuth = document.querySelector('.toggle-auth');
+                    if (toggleAuth) toggleAuth.style.display = 'none';
+
+                    authTitle.textContent = 'Verify Email';
+
+                }
+
+            } catch (err) {
+                console.error(err);
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                emailSubmitBtn.disabled = false;
+                emailSubmitBtn.textContent = 'Continue';
+            }
+        });
+
+        // Step 2: Verify OTP
+        otpForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const otp = otpInput.value.trim();
+            if (!otp) return;
+
+            otpSubmitBtn.disabled = true;
+            otpSubmitBtn.textContent = 'Verifying...';
+            errorMsg.style.display = 'none';
+
+            try {
+                const payload = {
+                    email: currentEmail,
+                    otp,
+                    password: document.getElementById('password').value.trim(), // Send Password
+                    applyInfluencer: !isLogin && influencerCheck.checked,
+                    influencerData: (!isLogin && influencerCheck.checked) ? { name: nameInput.value } : null
+                };
+
+                const response = await fetch('/api/auth/verify-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Invalid OTP');
+
+                if (data.redirectUrl) {
+                    // Success! Redirect to Magic Link URL which sets session
+                    window.location.href = data.redirectUrl;
+                } else {
+                    // Fallback
+                    window.location.href = '/';
+                }
+
+            } catch (err) {
+                console.error(err);
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+                otpSubmitBtn.disabled = false;
+                otpSubmitBtn.textContent = 'Verify & Login';
+            }
+        });
+
+        // Back Button (OTP)
+        backToEmailBtn.addEventListener('click', () => {
+            otpForm.style.display = 'none';
+            emailForm.style.display = 'block';
+            document.querySelector('.toggle-auth').style.display = 'block';
+            authTitle.textContent = isLogin ? 'Welcome Back' : 'Create Account';
+            errorMsg.style.display = 'none';
+        });
+
+        // --- Forgot Password Logic ---
+        const forgotLink = document.getElementById('forgot-link');
+        const forgotForm = document.getElementById('forgot-form');
+        const backFromForgot = document.getElementById('back-from-forgot');
+        const forgotEmailInput = document.getElementById('forgot-email');
+        const forgotSubmitBtn = document.getElementById('forgot-submit-btn');
+
+        forgotLink.addEventListener('click', () => {
+            emailForm.style.display = 'none';
+            forgotForm.style.display = 'block';
+            document.querySelector('.toggle-auth').style.display = 'none';
+            authTitle.textContent = 'Reset Password';
+            errorMsg.style.display = 'none';
+        });
+
+        backFromForgot.addEventListener('click', () => {
+            forgotForm.style.display = 'none';
+            emailForm.style.display = 'block';
+            document.querySelector('.toggle-auth').style.display = 'block';
+            authTitle.textContent = 'Welcome Back';
+            errorMsg.style.display = 'none';
+        });
+
+        forgotForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = forgotEmailInput.value.trim();
+            if (!email) return;
+
+            forgotSubmitBtn.disabled = true;
+            forgotSubmitBtn.textContent = 'Sending...';
+            errorMsg.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to send');
+
+                // Success Message
+                authTitle.textContent = 'Check Your Email';
+                forgotForm.innerHTML = `<p class="text-muted">${data.message}</p>
+                    <button class="btn btn-outline btn-block" onclick="location.reload()" style="margin-top: 20px;">Return to Login</button>`;
+
+            } catch (err) {
+                console.error(err);
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+                forgotSubmitBtn.disabled = false;
+                forgotSubmitBtn.textContent = 'Send Reset Link';
+            }
+        });
+
+    </script>
+</body>
+
+</html>

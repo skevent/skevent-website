@@ -1,9 +1,6 @@
+import { supabase } from './supabaseClient.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-
-    // --- Configuration ---
-    // If you deploy the Google Apps Script, paste the Web App URL here.
-    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxecJKDwbwI-HTfJpmah4hDWaRlI4s4AWFDzdmK8uwrIVOfVSm-XRAhRI9VZXW8Lwhb/exec';
 
     // --- References ---
     const loadingState = document.getElementById('loading-state');
@@ -20,15 +17,48 @@ document.addEventListener('DOMContentLoaded', () => {
     const displayTotal = document.getElementById('summary-total');
     const ticketsInput = document.getElementById('tickets');
 
-    // --- Logic ---
+    // Create Promo Code Input
+    let promoContainer = document.getElementById('promo-container');
+    if (!promoContainer) {
+        promoContainer = document.createElement('div');
+        promoContainer.className = 'form-group';
+        promoContainer.id = 'promo-container';
 
-    // 1. Get ID
-    const getEventIdFromUrl = () => {
-        const path = window.location.pathname;
-        const match = path.match(/\/book\/([a-zA-Z0-9-]+)/);
-        return match ? match[1] : null;
-    };
-    const eventId = getEventIdFromUrl();
+        promoContainer.innerHTML = `
+            <label for="promo-code">Influencer Code (Optional)</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="promo-code" placeholder="Enter code" style="flex:1;">
+                <button type="button" id="apply-code-btn" class="btn btn-outline" style="padding: 10px 16px; font-size: 0.9rem;">Apply</button>
+            </div>
+            <p id="promo-message" style="font-size: 0.85rem; margin-top: 4px; min-height: 1.25em;"></p>
+        `;
+
+        // Insert before button
+        const btn = form.querySelector('button[type="submit"]');
+        form.insertBefore(promoContainer, btn);
+    }
+
+    const promoInput = document.getElementById('promo-code');
+    const applyBtn = document.getElementById('apply-code-btn');
+    const promoMsg = document.getElementById('promo-message');
+
+    // --- Logic ---
+    let baseTicketPrice = 0;
+    let currentTicketPrice = 0; // After discount
+    let discountPercent = 0;
+    let eventId = new URLSearchParams(window.location.search).get('id');
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+
+    // Pre-fill code if present in URL
+    if (urlCode) {
+        promoInput.value = urlCode;
+        // Optional: Auto-click apply? Let's just fill it for now.
+    }
+
+    // Fallback ID from path if needed
+    if (!eventId) {
+        // ... path matching logic if needed ...
+    }
 
     if (!eventId) {
         alert('Invalid Booking URL');
@@ -36,133 +66,217 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // 2. Fetch Data
-    const SHEET_API = 'https://opensheet.elk.sh/1_7lOYKJZ_cmJeMn3hZNggNmk58Wu2SdYjVtlQgG-7lQ/upcoming_events';
-    let currentEvent = null;
-    let ticketPrice = 0;
+    // Load Event
+    async function loadEvent() {
+        try {
+            const { data: event, error } = await supabase
+                .from('events')
+                .select('*')
+                .eq('id', eventId)
+                .single();
 
-    fetch(SHEET_API)
-        .then(res => res.json())
-        .then(data => {
-            currentEvent = data.find(item => {
-                const type = item['Type'] || item['type'] || 'event';
-                const date = item['Date'] || item['date'];
-                const rawId = item['id'] || item['Id'] || item['ID'];
+            if (error || !event) throw new Error('Event not found');
 
-                let generatedId = rawId;
-                if (!generatedId && type && date) {
-                    generatedId = `${type.toLowerCase().trim()}-${date}`;
-                }
-                return generatedId === eventId;
-            });
+            renderBookingPage(event);
 
-            if (currentEvent) {
-                renderBookingPage(currentEvent);
-            } else {
-                alert('Event not found.');
-                window.location.href = '/';
+            // Auto-apply if code in URL
+            if (urlCode) {
+                applyBtn.click();
             }
-        })
-        .catch(err => {
+
+        } catch (err) {
             console.error(err);
             alert('Error loading event data.');
             window.location.href = '/';
-        });
+        }
+    }
+    loadEvent();
 
     function renderBookingPage(event) {
         // Populate Summary
-        displayTitle.textContent = event['Title'] || event['Title '] || event['title'];
+        displayTitle.textContent = event.title;
+        const dateObj = new Date(event.date);
+        displayDate.textContent = dateObj.toLocaleDateString();
+        displayLocation.textContent = event.location;
 
-        const dateObj = new Date(event['Date'] || event['date']);
-        displayDate.textContent = isNaN(dateObj) ? (event['Date'] || event['date']) : dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
+        baseTicketPrice = event.price;
+        currentTicketPrice = event.price; // Start with base
 
-        displayLocation.textContent = event['Location'] || event['location'] || 'Verify via details';
+        displayPrice.textContent = baseTicketPrice > 0 ? `₹${baseTicketPrice}` : 'Free';
 
-        // Price Logic
-        const rawPrice = event['ticket_price'] || event['Ticket Price'] || event['price'] || '0';
-        ticketPrice = parseInt(rawPrice.toString().replace(/[^0-9]/g, '')) || 0;
-
-        displayPrice.textContent = ticketPrice > 0 ? `₹${ticketPrice}` : 'Free';
-
-        // Initial Total
         updateTotal();
-
         updateBackLink();
 
-        // Show UI
         loadingState.style.display = 'none';
         bookingCard.style.display = 'grid';
-        setTimeout(() => bookingCard.style.opacity = '1', 50);
+        bookingCard.style.opacity = '1';
     }
 
     function updateBackLink() {
-        backLink.href = `/events/${eventId}`;
+        backLink.href = `/event.html?id=${eventId}`;
     }
 
-    // Calculate Total
     function updateTotal() {
         const count = parseInt(ticketsInput.value) || 1;
-        const total = count * ticketPrice;
-        displayTotal.textContent = total > 0 ? `₹${total}` : 'Free';
+        const total = count * currentTicketPrice;
+
+        // Update Total Display
+        if (total > 0) {
+            let html = `₹${Math.round(total)}`;
+            if (discountPercent > 0) {
+                html += ` <small style="color: #10B981; font-size: 0.8em; font-weight: 500;">(${discountPercent}% OFF applied)</small>`;
+            }
+            displayTotal.innerHTML = html;
+        } else {
+            displayTotal.textContent = 'Free';
+        }
     }
+
+    // Apply Code Handler
+    applyBtn.addEventListener('click', async () => {
+        const code = promoInput.value.trim();
+        if (!code) {
+            promoMsg.textContent = 'Please enter a code.';
+            promoMsg.style.color = 'red';
+            return;
+        }
+
+        applyBtn.textContent = '...';
+        applyBtn.disabled = true;
+        promoMsg.textContent = '';
+
+        try {
+            const res = await fetch('/api/validate-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            });
+
+            const data = await res.json();
+
+            if (res.ok && data.valid) {
+                discountPercent = data.discountPercent || 0;
+                const discountAmount = (baseTicketPrice * discountPercent) / 100;
+                currentTicketPrice = Math.max(0, baseTicketPrice - discountAmount);
+
+                promoMsg.textContent = `Code '${code}' applied! You save ${discountPercent}%`;
+                promoMsg.style.color = '#10B981';
+
+                // Update Price Per Ticket UI to show slashed price
+                displayPrice.innerHTML = `<span style="text-decoration: line-through; color: #999;">₹${baseTicketPrice}</span> ₹${Math.round(currentTicketPrice)}`;
+
+                updateTotal();
+
+            } else {
+                throw new Error(data.error || 'Invalid Code');
+            }
+
+        } catch (err) {
+            console.error(err);
+            promoMsg.textContent = err.message || 'Invalid Code';
+            promoMsg.style.color = '#EF4444';
+
+            // Reset
+            discountPercent = 0;
+            currentTicketPrice = baseTicketPrice;
+            displayPrice.textContent = `₹${baseTicketPrice}`;
+            updateTotal();
+        } finally {
+            applyBtn.textContent = 'Apply';
+            applyBtn.disabled = false;
+        }
+    });
 
     ticketsInput.addEventListener('input', updateTotal);
     ticketsInput.addEventListener('change', updateTotal);
 
-    // 3. Handle Submit
+    // --- Submit ---
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        if (!GOOGLE_SCRIPT_URL) {
-            alert('Configuration Error: GOOGLE_SCRIPT_URL is missing in book.js');
-            return;
-        }
+        const name = document.getElementById('name').value;
+        const email = document.getElementById('email').value;
+        const phone = document.getElementById('phone').value;
+        const promoCode = promoInput.value.trim();
 
-        // Clean amount string "₹500" -> 500
-        const totalAmount = parseInt(displayTotal.textContent.replace(/[^0-9]/g, '')) || 0;
-
-        if (totalAmount <= 0) {
-            alert("This event is free or has invalid pricing. Please contact support.");
-            return;
-        }
-
-        const formData = {
-            action: 'create_booking', // Flag for script
-            name: document.getElementById('name').value,
-            email: document.getElementById('email').value,
-            phone: document.getElementById('phone').value,
-            tickets: ticketsInput.value,
-            event_id: eventId,
-            event_title: displayTitle.textContent,
-            total_amount: totalAmount
-        };
-
-        submitBtn.textContent = 'Generating Secure Payment Link...';
+        submitBtn.textContent = 'Processing...';
         submitBtn.disabled = true;
 
         try {
-            // POST to Apps Script (Expecting JSON response)
-            const response = await fetch(GOOGLE_SCRIPT_URL, {
+            // 1. Create Order via Backend
+            const response = await fetch('/api/create-razorpay-order', {
                 method: 'POST',
-                body: JSON.stringify(formData)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    eventId,
+                    quantity: parseInt(ticketsInput.value) || 1,
+                    influencerCode: promoCode || null,
+                    customerDetails: { name, email, phone }
+                })
             });
 
-            const result = await response.json();
+            const orderData = await response.json();
 
-            if (result.result === 'success' && result.payment_url) {
-                // Redirect to the dynamic Razorpay page
-                window.location.href = result.payment_url;
-            } else {
-                throw new Error(result.error || 'Failed to generate payment link.');
+            if (!response.ok) {
+                throw new Error(orderData.error || 'Failed to create order');
             }
 
+            // 2. Handle Free Event (Auto-confirmed)
+            if (orderData.amount === 0) {
+                window.location.href = '/success.html';
+                return;
+            }
+
+            // 3. Open Razorpay
+            const options = {
+                "key": orderData.key,
+                "amount": orderData.amount,
+                "currency": orderData.currency,
+                "name": "SK Events",
+                "description": `Booking for ${displayTitle.textContent}`,
+                "order_id": orderData.orderId,
+                "handler": function (response) {
+                    // Payment Success - Webhook handles DB update, 
+                    // but we redirect user to success page
+                    console.log('Payment Success:', response);
+                    window.location.href = '/success.html';
+                },
+                "prefill": {
+                    "name": name,
+                    "email": email,
+                    "contact": phone
+                },
+                "theme": {
+                    "color": "#0F172A"
+                },
+                "modal": {
+                    "ondismiss": function () {
+                        submitBtn.textContent = 'Proceed to Payment';
+                        submitBtn.disabled = false;
+                    }
+                }
+            };
+
+            const rzp1 = new Razorpay(options);
+            rzp1.on('payment.failed', function (response) {
+                alert('Payment Failed: ' + response.error.description);
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Retry Payment';
+            });
+            rzp1.open();
+
         } catch (err) {
-            console.error('Booking Process Failed:', err);
-            // Fallback error message
-            alert('Unable to initiate payment. Please check your connection or contact support. (' + err.message + ')');
-            submitBtn.textContent = 'Proceed to Payment';
+            console.error('Booking Error:', err);
+            alert('Error: ' + err.message);
             submitBtn.disabled = false;
+            submitBtn.textContent = 'Proceed to Payment';
         }
     });
 
+    // Add Razorpay Script dynamically if not present
+    if (!document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
+        const script = document.createElement('script');
+        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+        document.body.appendChild(script);
+    }
 });

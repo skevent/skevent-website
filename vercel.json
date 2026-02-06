@@ -1,16 +1,67 @@
 {
     "rewrites": [
         {
-            "source": "/events/:match*",
+            "source": "/api/(.*)",
+            "destination": "/api/$1"
+        },
+        {
+            "source": "/events/(.*)",
             "destination": "/event.html"
         },
         {
-            "source": "/book/:match*",
+            "source": "/book/(.*)",
             "destination": "/book.html"
         },
         {
+            "source": "/event.html",
+            "destination": "/event.html"
+        },
+        {
+            "source": "/book.html",
+            "destination": "/book.html"
+        },
+        {
+            "source": "/login.html",
+            "destination": "/login.html"
+        },
+        {
+            "source": "/success.html",
+            "destination": "/success.html"
+        },
+        {
+            "source": "/admin/(.*)",
+            "destination": "/admin/$1"
+        },
+        {
+            "source": "/influencer/(.*)",
+            "destination": "/influencer/$1"
+        },
+        {
             "source": "/(.*)",
-            "destination": "/index.html"
+            "destination": "/$1"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/api/(.*)",
+            "headers": [
+                {
+                    "key": "Access-Control-Allow-Credentials",
+                    "value": "true"
+                },
+                {
+                    "key": "Access-Control-Allow-Origin",
+                    "value": "*"
+                },
+                {
+                    "key": "Access-Control-Allow-Methods",
+                    "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT"
+                },
+                {
+                    "key": "Access-Control-Allow-Headers",
+                    "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version"
+                }
+            ]
         }
     ]
 }
