@@ -13,14 +13,14 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { eventId, quantity = 1, influencerCode, customerDetails } = req.body;
+    const { eventId, ticketTypeId, quantity = 1, influencerCode, customerDetails } = req.body;
 
     if (!eventId || !customerDetails) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
     try {
-        // 1. Fetch Event Price (Server-side validation)
+        // 1. Fetch Event (for validation)
         const { data: event, error: eventError } = await supabaseAdmin
             .from('events')
             .select('*')
@@ -31,10 +31,33 @@ export default async function handler(req, res) {
             return res.status(404).json({ error: 'Event not found' });
         }
 
-        let singleTicketPrice = event.price;
+        // 2. Get Price from Ticket Type or Event
+        let singleTicketPrice;
+        let ticketTypeName = 'General';
+
+        if (ticketTypeId && ticketTypeId !== 'legacy') {
+            // Fetch from ticket_types table
+            const { data: ticketType, error: typeError } = await supabaseAdmin
+                .from('ticket_types')
+                .select('*')
+                .eq('id', ticketTypeId)
+                .eq('event_id', eventId)
+                .single();
+
+            if (typeError || !ticketType) {
+                return res.status(400).json({ error: 'Invalid ticket type' });
+            }
+
+            singleTicketPrice = ticketType.price;
+            ticketTypeName = ticketType.name;
+        } else {
+            // Fallback to event price for legacy bookings
+            singleTicketPrice = event.price;
+        }
+
         let discountApplied = 0;
 
-        // 2. Apply Influencer Discount if code provided
+        // 3. Apply Influencer Discount if code provided
         if (influencerCode) {
             const { data: influencer, error: influencerError } = await supabaseAdmin
                 .from('influencers')
@@ -75,6 +98,7 @@ export default async function handler(req, res) {
                 receipt: `receipt_${Date.now()}`,
                 notes: {
                     eventId: eventId,
+                    ticketType: ticketTypeName,
                     influencerCode: influencerCode || 'NONE'
                 }
             };
@@ -82,12 +106,13 @@ export default async function handler(req, res) {
             orderId = razorpayOrder.id;
         }
 
-        // 4. Create Booking in Database (Pending State)
+        // 5. Create Booking in Database (Pending State)
         const { data: booking, error: bookingError } = await supabaseAdmin
             .from('bookings')
             .insert([
                 {
                     event_id: eventId,
+                    ticket_type_id: (ticketTypeId && ticketTypeId !== 'legacy') ? ticketTypeId : null,
                     customer_name: customerDetails.name,
                     customer_email: customerDetails.email,
                     customer_phone: customerDetails.phone,

@@ -285,13 +285,21 @@ function openEventModal(event = null) {
                 <label>Location</label>
                 <input type="text" name="location" class="form-control" value="${event?.location || ''}" required>
             </div>
-             <div class="form-group">
-                <label>Price (₹)</label>
-                <input type="number" name="price" class="form-control" value="${event?.price || ''}" required min="0">
-            </div>
-             <div class="form-group">
-                <label>Capacity</label>
+            <div class="form-group">
+                <label>Total Capacity</label>
                 <input type="number" name="capacity" class="form-control" value="${event?.capacity || 100}" required min="1">
+            </div>
+            
+            <!-- Ticket Types Section -->
+            <div class="form-group">
+                <label style="display: flex; justify-content: space-between; align-items: center;">
+                    Ticket Types
+                    <button type="button" id="add-ticket-type-btn" class="btn-primary" style="font-size: 0.8rem; padding: 4px 10px; background: transparent; border: 1px solid var(--accent-yellow); color: var(--accent-yellow);">+ Add Type</button>
+                </label>
+                <div id="ticket-types-container" style="margin-top: 10px; display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Ticket type rows will be added here -->
+                </div>
+                <input type="hidden" name="price" value="0"> <!-- Fallback for legacy -->
             </div>
             
             <div class="form-group">
@@ -329,6 +337,55 @@ function openEventModal(event = null) {
     `;
 
     openModal(title, html);
+
+    // --- Ticket Types Management ---
+    const ticketTypesContainer = document.getElementById('ticket-types-container');
+    let ticketTypeCounter = 0;
+
+    function createTicketTypeRow(typeData = {}) {
+        const rowId = `ticket-type-${ticketTypeCounter++}`;
+        const row = document.createElement('div');
+        row.id = rowId;
+        row.style.cssText = 'display: grid; grid-template-columns: 1fr 100px 1fr 40px; gap: 8px; align-items: center; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px;';
+        row.innerHTML = `
+            <input type="text" placeholder="Type Name (e.g., Single)" value="${typeData.name || ''}" class="form-control ticket-name" required style="font-size: 0.9rem;">
+            <input type="number" placeholder="Price" value="${typeData.price || ''}" class="form-control ticket-price" required min="0" style="font-size: 0.9rem;">
+            <input type="text" placeholder="Description (optional)" value="${typeData.description || ''}" class="form-control ticket-desc" style="font-size: 0.9rem;">
+            <button type="button" class="remove-ticket-btn" style="background: var(--danger); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1.2rem; padding: 4px 8px;">&times;</button>
+        `;
+        row.dataset.existingId = typeData.id || ''; // Store existing ID for updates
+        row.querySelector('.remove-ticket-btn').addEventListener('click', () => row.remove());
+        return row;
+    }
+
+    // Add Type Button
+    document.getElementById('add-ticket-type-btn').addEventListener('click', () => {
+        ticketTypesContainer.appendChild(createTicketTypeRow());
+    });
+
+    // Load existing ticket types if editing
+    if (isEdit && event?.id) {
+        (async () => {
+            // Clear container first to prevent duplicates
+            ticketTypesContainer.innerHTML = '';
+
+            const { data: types, error } = await supabase
+                .from('ticket_types')
+                .select('*')
+                .eq('event_id', event.id)
+                .order('sort_order', { ascending: true });
+
+            if (!error && types && types.length > 0) {
+                types.forEach(t => ticketTypesContainer.appendChild(createTicketTypeRow(t)));
+            } else {
+                // Add one default row if no types exist
+                ticketTypesContainer.appendChild(createTicketTypeRow({ name: 'General', price: event.price || 0 }));
+            }
+        })();
+    } else {
+        // Add one default row for new events
+        ticketTypesContainer.appendChild(createTicketTypeRow({ name: 'General', price: '' }));
+    }
 
     // File Selection Handler
     const fileInput = document.getElementById('event-file-upload');
@@ -379,22 +436,71 @@ function openEventModal(event = null) {
                 throw new Error("Please upload an image for the event.");
             }
 
+            // Collect ticket types from form
+            const ticketTypeRows = ticketTypesContainer.querySelectorAll('[id^="ticket-type-"]');
+            const ticketTypes = [];
+            let minPrice = Infinity;
+
+            ticketTypeRows.forEach((row, index) => {
+                const name = row.querySelector('.ticket-name').value.trim();
+                const price = parseFloat(row.querySelector('.ticket-price').value) || 0;
+                const description = row.querySelector('.ticket-desc').value.trim();
+                const existingId = row.dataset.existingId;
+
+                if (name && price >= 0) {
+                    ticketTypes.push({ name, price, description, sort_order: index, existingId });
+                    if (price < minPrice) minPrice = price;
+                }
+            });
+
+            if (ticketTypes.length === 0) {
+                throw new Error("Please add at least one ticket type.");
+            }
+
+            // Use minimum price as the event's legacy price
+            const legacyPrice = minPrice === Infinity ? 0 : minPrice;
+
             // Construct Payload
             const payload = {
                 title: formData.get('title'),
-                description: formData.get('description'), // Added description
+                description: formData.get('description'),
                 date: formData.get('date'),
                 location: formData.get('location'),
-                price: formData.get('price'),
+                price: legacyPrice, // For backward compatibility
                 capacity: formData.get('capacity'),
                 image_url: imageUrl
             };
 
-            const { error } = isEdit
-                ? await supabase.from('events').update(payload).eq('id', event.id)
-                : await supabase.from('events').insert([payload]);
+            btn.textContent = 'Saving Event...';
 
-            if (error) throw error;
+            let eventId = event?.id;
+
+            if (isEdit) {
+                const { error } = await supabase.from('events').update(payload).eq('id', event.id);
+                if (error) throw error;
+            } else {
+                const { data: newEvent, error } = await supabase.from('events').insert([payload]).select().single();
+                if (error) throw error;
+                eventId = newEvent.id;
+            }
+
+            // Save Ticket Types
+            btn.textContent = 'Saving Ticket Types...';
+
+            // Delete old ticket types for this event (simpler than upsert logic)
+            await supabase.from('ticket_types').delete().eq('event_id', eventId);
+
+            // Insert new ticket types
+            const ticketTypePayloads = ticketTypes.map(t => ({
+                event_id: eventId,
+                name: t.name,
+                price: t.price,
+                description: t.description || null,
+                sort_order: t.sort_order
+            }));
+
+            const { error: ticketError } = await supabase.from('ticket_types').insert(ticketTypePayloads);
+            if (ticketError) throw ticketError;
 
             closeModal();
             loadEvents(); // Refresh

@@ -26,13 +26,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        renderEvent(event);
+        // Fetch ticket types for this event
+        const { data: ticketTypes, error: typesError } = await supabase
+            .from('ticket_types')
+            .select('*')
+            .eq('event_id', eventId)
+            .order('sort_order', { ascending: true });
+
+        // Use fetched types or fallback to legacy price
+        const types = (!typesError && ticketTypes && ticketTypes.length > 0)
+            ? ticketTypes
+            : [{ id: 'legacy', name: 'General Admission', price: event.price, description: null }];
+
+        renderEvent(event, types);
     } catch (err) {
         console.error('Error fetching event:', err);
         renderError('Event not found or unavailable.');
     }
 
-    function renderEvent(item) {
+    function renderEvent(item, ticketTypes) {
         const dateObj = new Date(item.date);
         const dateStr = isNaN(dateObj)
             ? item.date
@@ -47,8 +59,65 @@ document.addEventListener('DOMContentLoaded', async () => {
             item.image_url ||
             'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80';
 
-        const priceDisplay = item.price > 0 ? `₹${item.price}` : 'Free';
         const slotsDisplay = item.capacity ? `${item.capacity} Spots` : 'Open Entry';
+
+        // Generate premium ticket types cards
+        const ticketTypesHtml = ticketTypes.map((t, idx) => {
+            const icons = ['🎫', '👥', '👨‍👩‍👧‍👦', '⭐', '💎'];
+            const icon = icons[idx % icons.length];
+            const gradients = [
+                'linear-gradient(135deg, rgba(234, 189, 8, 0.15) 0%, rgba(234, 189, 8, 0.05) 100%)',
+                'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(168, 85, 247, 0.05) 100%)',
+                'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%)',
+                'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)',
+                'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%)'
+            ];
+            const borderColors = ['#eabd08', '#a855f7', '#3b82f6', '#10b981', '#ef4444'];
+
+            return `
+            <div class="ticket-card" style="
+                background: ${gradients[idx % gradients.length]};
+                border: 1px solid ${borderColors[idx % borderColors.length]}33;
+                border-radius: 16px;
+                padding: 1.25rem;
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                transition: all 0.3s ease;
+                cursor: pointer;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(0,0,0,0.2)';"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+                <div style="
+                    width: 50px;
+                    height: 50px;
+                    background: ${borderColors[idx % borderColors.length]}22;
+                    border-radius: 12px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 1.5rem;
+                ">${icon}</div>
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 1.1rem; color: var(--color-text, #fff); margin-bottom: 2px;">${t.name}</div>
+                    ${t.description ? `<div style="font-size: 0.85rem; color: var(--color-text-secondary, #888);">${t.description}</div>` : ''}
+                </div>
+                <div style="
+                    background: ${borderColors[idx % borderColors.length]};
+                    color: #000;
+                    padding: 8px 16px;
+                    border-radius: 25px;
+                    font-weight: 700;
+                    font-size: 1rem;
+                ">${t.price > 0 ? `₹${t.price}` : 'FREE'}</div>
+            </div>
+        `}).join('');
+
+        // Price summary for header
+        const minPrice = Math.min(...ticketTypes.map(t => t.price));
+        const maxPrice = Math.max(...ticketTypes.map(t => t.price));
+        const priceRange = minPrice === maxPrice
+            ? (minPrice > 0 ? `₹${minPrice}` : 'Free')
+            : `₹${minPrice} - ₹${maxPrice}`;
 
         eventContainer.innerHTML = `
             <div class="event-detail-header">
@@ -69,14 +138,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span class="meta-value">${item.location || 'TBA'}</span>
                     </div>
                     <div class="meta-item">
-                        <span class="meta-label">Price</span>
-                        <span class="meta-value">${priceDisplay}</span>
+                        <span class="meta-label">Starting From</span>
+                        <span class="meta-value" style="color: var(--color-accent, #eabd08); font-weight: 600;">${priceRange}</span>
                     </div>
                     <div class="meta-item">
                         <span class="meta-label">Capacity</span>
                         <span class="meta-value">${slotsDisplay}</span>
                     </div>
                 </div>
+
+                <!-- Premium Ticket Types Section -->
+                ${ticketTypes.length > 1 ? `
+                <div class="ticket-types-section" style="margin: 2rem 0;">
+                    <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+                        <span style="font-size: 1.5rem;">🎟️</span>
+                        <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--color-text, #fff); margin: 0;">Choose Your Ticket</h3>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${ticketTypesHtml}
+                    </div>
+                </div>
+                ` : ''}
 
                 ${item.external_link
                 ? `<p class="event-address">

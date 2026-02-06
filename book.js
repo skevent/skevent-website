@@ -49,6 +49,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let eventId = new URLSearchParams(window.location.search).get('id');
     const urlCode = new URLSearchParams(window.location.search).get('code');
 
+    // Ticket Types State
+    let ticketTypes = [];
+    let selectedTicketType = null;
+    const ticketTypeGroup = document.getElementById('ticket-type-group');
+    const ticketTypeOptions = document.getElementById('ticket-type-options');
+
     // Pre-fill code if present in URL
     if (urlCode) {
         promoInput.value = urlCode;
@@ -69,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load Event
     async function loadEvent() {
         try {
+            // Fetch event
             const { data: event, error } = await supabase
                 .from('events')
                 .select('*')
@@ -76,6 +83,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 .single();
 
             if (error || !event) throw new Error('Event not found');
+
+            // Fetch ticket types for this event
+            const { data: types, error: typesError } = await supabase
+                .from('ticket_types')
+                .select('*')
+                .eq('event_id', eventId)
+                .order('sort_order', { ascending: true });
+
+            if (!typesError && types && types.length > 0) {
+                ticketTypes = types;
+            } else {
+                // Fallback: Create a virtual "General" type from event price
+                ticketTypes = [{
+                    id: 'legacy',
+                    name: 'General Admission',
+                    price: event.price,
+                    description: null
+                }];
+            }
 
             renderBookingPage(event);
 
@@ -99,17 +125,80 @@ document.addEventListener('DOMContentLoaded', () => {
         displayDate.textContent = dateObj.toLocaleDateString();
         displayLocation.textContent = event.location;
 
-        baseTicketPrice = event.price;
-        currentTicketPrice = event.price; // Start with base
+        // Render Ticket Types
+        renderTicketTypes();
 
-        displayPrice.textContent = baseTicketPrice > 0 ? `₹${baseTicketPrice}` : 'Free';
-
-        updateTotal();
         updateBackLink();
 
         loadingState.style.display = 'none';
         bookingCard.style.display = 'grid';
         bookingCard.style.opacity = '1';
+    }
+
+    function renderTicketTypes() {
+        // If only one type, auto-select it and hide selector
+        if (ticketTypes.length === 1) {
+            selectTicketType(ticketTypes[0]);
+            ticketTypeGroup.style.display = 'none';
+            return;
+        }
+
+        // Multiple types - show selector
+        ticketTypeGroup.style.display = 'block';
+        ticketTypeOptions.innerHTML = '';
+
+        ticketTypes.forEach((type, index) => {
+            const card = document.createElement('div');
+            card.className = 'ticket-type-card';
+            card.dataset.typeId = type.id;
+            card.style.cssText = `
+                padding: 12px 16px;
+                border: 2px solid #e5e7eb;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            `;
+            card.innerHTML = `
+                <div>
+                    <strong style="font-size: 1rem;">${type.name}</strong>
+                    ${type.description ? `<div style="font-size: 0.85rem; color: #6b7280;">${type.description}</div>` : ''}
+                </div>
+                <div style="font-weight: 600; color: var(--color-accent);">₹${type.price}</div>
+            `;
+
+            card.addEventListener('click', () => {
+                // Remove selection from all
+                ticketTypeOptions.querySelectorAll('.ticket-type-card').forEach(c => {
+                    c.style.borderColor = '#e5e7eb';
+                    c.style.background = 'transparent';
+                });
+                // Select this one
+                card.style.borderColor = 'var(--color-accent)';
+                card.style.background = 'rgba(234, 189, 8, 0.1)';
+                selectTicketType(type);
+            });
+
+            ticketTypeOptions.appendChild(card);
+
+            // Auto-select first
+            if (index === 0) {
+                card.click();
+            }
+        });
+    }
+
+    function selectTicketType(type) {
+        selectedTicketType = type;
+        baseTicketPrice = type.price;
+        currentTicketPrice = type.price;
+        displayPrice.textContent = baseTicketPrice > 0 ? `₹${baseTicketPrice}` : 'Free';
+
+        // Reset discount when type changes
+        discountPercent = 0;
+        updateTotal();
     }
 
     function updateBackLink() {
@@ -209,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     eventId,
+                    ticketTypeId: selectedTicketType?.id || null,
                     quantity: parseInt(ticketsInput.value) || 1,
                     influencerCode: promoCode || null,
                     customerDetails: { name, email, phone }
